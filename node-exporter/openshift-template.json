@@ -1,0 +1,177 @@
+{
+    "apiVersion": "v1",
+    "kind": "Template",
+    "metadata": {
+        "name": "node-exporter"
+    },
+    "parameters": [
+        {
+            "name": "APPLICATION_NAME",
+            "value": "node-exporter",
+            "from": "[a-zA-Z0-9]",
+            "required": true
+        }
+    ],
+    "objects": [
+        {
+            "apiVersion": "v1",
+            "kind": "ImageStream",
+            "metadata": {
+                "name": "${APPLICATION_NAME}-img",
+                "labels": {
+                    "app": "${APPLICATION_NAME}"
+                }
+            },
+            "spec": {
+                "tags": [
+                    {
+                        "name": "latest",
+                        "from": {
+                            "kind": "DockerImage",
+                            "name": "prom/node-exporter"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "DeploymentConfig",
+            "metadata": {
+                "name": "${APPLICATION_NAME}",
+                "labels": {
+                    "app": "${APPLICATION_NAME}",
+                    "type": "monitoring"
+                }
+            },
+            "spec": {
+                "replicas": 1,
+                "selector": {
+                    "app": "${APPLICATION_NAME}",
+                    "deploymentconfig": "${APPLICATION_NAME}"
+                },
+                "template": {
+                    "metadata": {
+                        "labels": {
+                            "app": "${APPLICATION_NAME}",
+                            "deploymentconfig": "${APPLICATION_NAME}",
+                            "type": "monitoring"
+                        }
+                    },
+                    "spec": {
+                        "containers": [
+                            {
+                                "name": "node-exporter",
+                                "image": "${APPLICATION_NAME}-img:latest",
+                                "imagePullPolicy": "IfNotPresent",
+                                "livenessProbe": {
+                                    "failureThreshold": 3,
+                                    "httpGet": {
+                                        "path": "/",
+                                        "port": 9100,
+                                        "scheme": "HTTP"
+                                    },
+                                    "periodSeconds": 10,
+                                    "successThreshold": 1,
+                                    "timeoutSeconds": 1
+                                },
+                                "ports": [
+                                    {
+                                        "containerPort": 9100,
+                                        "protocol": "TCP"
+                                    }
+                                ],
+                                "volumeMounts": [
+                                ]
+                            }
+                        ],
+                        "volumes": [
+                        ]
+                    }
+                },
+                "test": false,
+                "triggers": [
+                    {
+                        "type": "ConfigChange"
+                    },
+                    {
+                        "imageChangeParams": {
+                            "automatic": true,
+                            "containerNames": [
+                                "node-exporter"
+                            ],
+                            "from": {
+                                "kind": "ImageStreamTag",
+                                "name": "${APPLICATION_NAME}-img:latest"
+                            }
+                        },
+                        "type": "ImageChange"
+                    }
+                ],
+                "strategy": {
+                    "type": "Recreate",
+                    "recreateParams": {
+                      "timeoutSeconds": 600
+                    },
+                    "resources": {
+                    },
+                    "activeDeadlineSeconds": 21600
+                  }
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "name": "${APPLICATION_NAME}",
+                "labels": {
+                    "app": "${APPLICATION_NAME}",
+                    "type": "monitoring"
+                },
+                "annotations":
+                {
+                  "prometheus.io/scheme": "http",
+                  "prometheus.io/scrape": "true",
+                  "prometheus.io/port": "9100",
+                  "prometheus.io/path": "/metrics"
+                }
+            },
+            "spec": {
+                "ports": [
+                    {
+                        "name": "9100-tcp",
+                        "port": 9100,
+                        "protocol": "TCP",
+                        "targetPort": 9100
+                    }
+                ],
+                "selector": {
+                    "deploymentconfig": "${APPLICATION_NAME}"
+                },
+                "type": "ClusterIP"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Route",
+            "metadata": {
+                "name": "${APPLICATION_NAME}",
+                "labels": {
+                    "app": "${APPLICATION_NAME}",
+                    "type": "monitoring"
+                }
+            },
+            "spec": {
+                "host": "",
+                "port": {
+                    "targetPort": "9100-tcp"
+                },
+                "to": {
+                    "kind": "Service",
+                    "name": "${APPLICATION_NAME}",
+                    "weight": 100
+                }
+            }
+        }
+    ]
+}

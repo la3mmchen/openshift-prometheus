@@ -1,0 +1,175 @@
+{
+    "apiVersion": "v1",
+    "kind": "Template",
+    "metadata": {
+        "name": "elasticsearch"
+    },
+    "parameters": [
+        {
+            "name": "APPLICATION_NAME",
+            "value": "elasticsearch",
+            "from": "[a-zA-Z0-9]",
+            "required": true
+        }
+    ],
+    "objects": [
+        {
+            "apiVersion": "v1",
+            "kind": "ImageStream",
+            "metadata": {
+                "name": "${APPLICATION_NAME}-img",
+                "labels": {
+                    "app": "${APPLICATION_NAME}"
+                }
+            },
+            "spec": {
+                "tags": [
+                    {
+                        "name": "latest",
+                        "from": {
+                            "kind": "DockerImage",
+                            "name": "la3mmchen/elastic-docker-image"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "DeploymentConfig",
+            "metadata": {
+                "name": "${APPLICATION_NAME}",
+                "labels": {
+                    "app": "${APPLICATION_NAME}",
+                    "type": "application"
+                }
+            },
+            "spec": {
+                "replicas": 1,
+                "selector": {
+                    "app": "${APPLICATION_NAME}",
+                    "deploymentconfig": "${APPLICATION_NAME}"
+                },
+                "template": {
+                    "metadata": {
+                        "labels": {
+                            "app": "${APPLICATION_NAME}",
+                            "deploymentconfig": "${APPLICATION_NAME}",
+                            "type": "application"
+                        }
+                    },
+                    "spec": {
+                        "containers": [
+                            {
+                                "name": "elasticsearch",
+                                "image": "${APPLICATION_NAME}-img:latest",
+                                "imagePullPolicy": "IfNotPresent",
+                                "ports": [
+                                    {
+                                        "containerPort": 9200,
+                                        "protocol": "TCP"
+                                    }
+                                ],
+                                "volumeMounts": [
+                                    {
+                                        "mountPath": "/etc/elasticsearch/",
+                                        "name": "elasticsearch-1"
+                                    }
+                                ]
+                            }
+                        ],
+                        "volumes": [
+                            {
+                                "configMap": {
+                                    "defaultMode": 420,
+                                    "name": "${APPLICATION_NAME}-config"
+                                },
+                                "name": "elasticsearch-1"
+                            }
+                        ]
+                    }
+                },
+                "test": false,
+                "triggers": [
+                    {
+                        "type": "ConfigChange"
+                    },
+                    {
+                        "imageChangeParams": {
+                            "automatic": true,
+                            "containerNames": [
+                                "elasticsearch"
+                            ],
+                            "from": {
+                                "kind": "ImageStreamTag",
+                                "name": "${APPLICATION_NAME}-img:latest"
+                            }
+                        },
+                        "type": "ImageChange"
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "name": "${APPLICATION_NAME}",
+                "labels": {
+                    "app": "${APPLICATION_NAME}",
+                    "type": "application"
+                },
+                "annotations":
+                {
+                  "prometheus.io/scheme": "http",
+                  "prometheus.io/scrape": "true",
+                  "prometheus.io/probe": "true",
+                  "prometheus.io/port": "9200",
+                  "prometheus.io/path": "/_prometheus/metrics"
+                }
+            },
+            "spec": {
+                "ports": [
+                  {
+                      "name": "9200-tcp",
+                      "port": 9200,
+                      "protocol": "TCP",
+                      "targetPort": 9200
+                  },
+                  {
+                      "name": "9300-tcp",
+                      "port": 9300,
+                      "protocol": "TCP",
+                      "targetPort": 9300
+                  }
+                ],
+                "selector": {
+                    "deploymentconfig": "${APPLICATION_NAME}"
+                },
+                "type": "ClusterIP"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Route",
+            "metadata": {
+                "name": "${APPLICATION_NAME}",
+                "labels": {
+                    "app": "${APPLICATION_NAME}",
+                    "type": "application"
+                }
+            },
+            "spec": {
+                "host": "",
+                "port": {
+                    "targetPort": "9200-tcp"
+                },
+                "to": {
+                    "kind": "Service",
+                    "name": "${APPLICATION_NAME}",
+                    "weight": 100
+                }
+            }
+        }
+    ]
+}

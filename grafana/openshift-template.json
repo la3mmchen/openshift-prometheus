@@ -1,0 +1,195 @@
+{
+    "apiVersion": "v1",
+    "kind": "Template",
+    "metadata": {
+        "name": "grafana"
+    },
+    "parameters": [
+        {
+            "name": "APPLICATION_NAME",
+            "value": "grafana",
+            "from": "[a-zA-Z0-9]",
+            "required": true
+        }
+    ],
+    "objects": [
+        {
+            "apiVersion": "v1",
+            "kind": "ImageStream",
+            "metadata": {
+                "name": "${APPLICATION_NAME}-img",
+                "labels": {
+                    "app": "${APPLICATION_NAME}"
+                }
+            },
+            "spec": {
+                "tags": [
+                    {
+                        "name": "latest",
+                        "from": {
+                            "kind": "DockerImage",
+                            "name": "grafana/grafana"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "DeploymentConfig",
+            "metadata": {
+                "name": "${APPLICATION_NAME}",
+                "labels": {
+                    "app": "${APPLICATION_NAME}",
+                    "type": "monitoring"
+                }
+            },
+            "spec": {
+                "replicas": 1,
+                "selector": {
+                    "app": "${APPLICATION_NAME}",
+                    "deploymentconfig": "${APPLICATION_NAME}"
+                },
+                "template": {
+                    "metadata": {
+                        "labels": {
+                            "app": "${APPLICATION_NAME}",
+                            "deploymentconfig": "${APPLICATION_NAME}",
+                            "type": "monitoring"
+                        }
+                    },
+                    "spec": {
+                        "containers": [
+                            {
+                                "name": "grafana",
+                                "image": "${APPLICATION_NAME}-img:latest",
+                                "imagePullPolicy": "IfNotPresent",
+                                "livenessProbe": {
+                                    "failureThreshold": 3,
+                                    "httpGet": {
+                                        "path": "/",
+                                        "port": 3000,
+                                        "scheme": "HTTP"
+                                    },
+                                    "periodSeconds": 10,
+                                    "successThreshold": 1,
+                                    "timeoutSeconds": 1
+                                },
+                                "ports": [
+                                    {
+                                        "containerPort": 3000,
+                                        "protocol": "TCP"
+                                    }
+                                ],
+                                "volumeMounts": [
+                                    {
+                                        "mountPath": "/etc/grafana",
+                                        "name": "grafana-1"
+                                    },
+                                    {
+                                        "mountPath": "/var/lib/grafana",
+                                        "name": "grafana-2"
+                                    },
+                                    {
+                                        "mountPath": "/var/log/grafana",
+                                        "name": "grafana-3"
+                                    }
+                                ]
+                            }
+                        ],
+                        "volumes": [
+                            {
+                                "configMap": {
+                                    "defaultMode": 420,
+                                    "name": "${APPLICATION_NAME}-config"
+                                },
+                                "name": "grafana-1"
+                            },
+                            {
+                                "emptyDir": {},
+                                "name": "grafana-2"
+                            },
+                            {
+                                "emptyDir": {},
+                                "name": "grafana-3"
+                            }
+                        ]
+                    }
+                },
+                "test": false,
+                "triggers": [
+                    {
+                        "type": "ConfigChange"
+                    },
+                    {
+                        "imageChangeParams": {
+                            "automatic": true,
+                            "containerNames": [
+                                "grafana"
+                            ],
+                            "from": {
+                                "kind": "ImageStreamTag",
+                                "name": "${APPLICATION_NAME}-img:latest"
+                            }
+                        },
+                        "type": "ImageChange"
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "name": "${APPLICATION_NAME}",
+                "labels": {
+                    "app": "${APPLICATION_NAME}",
+                    "type": "monitoring"
+                },
+                "annotations":
+                {
+                  "prometheus.io/scheme": "http",
+                  "prometheus.io/scrape": "true",
+                  "prometheus.io/port": "3000",
+                  "prometheus.io/path": "/metrics"
+                }
+            },
+            "spec": {
+                "ports": [
+                    {
+                        "name": "3000-tcp",
+                        "port": 3000,
+                        "protocol": "TCP",
+                        "targetPort": 3000
+                    }
+                ],
+                "selector": {
+                    "deploymentconfig": "${APPLICATION_NAME}"
+                },
+                "type": "ClusterIP"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Route",
+            "metadata": {
+                "name": "${APPLICATION_NAME}",
+                "labels": {
+                    "app": "${APPLICATION_NAME}",
+                    "type": "monitoring"
+                }
+            },
+            "spec": {
+                "host": "",
+                "port": {
+                    "targetPort": "3000-tcp"
+                },
+                "to": {
+                    "kind": "Service",
+                    "name": "${APPLICATION_NAME}",
+                    "weight": 100
+                }
+            }
+        }
+    ]
+}

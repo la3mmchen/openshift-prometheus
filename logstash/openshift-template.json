@@ -1,0 +1,178 @@
+{
+    "apiVersion": "v1",
+    "kind": "Template",
+    "metadata": {
+        "name": "logstash"
+    },
+    "parameters": [
+        {
+            "name": "APPLICATION_NAME",
+            "value": "logstash",
+            "from": "[a-zA-Z0-9]",
+            "required": true
+        }
+    ],
+    "objects": [
+        {
+            "apiVersion": "v1",
+            "kind": "ImageStream",
+            "metadata": {
+                "name": "${APPLICATION_NAME}-img",
+                "labels": {
+                    "app": "${APPLICATION_NAME}"
+                }
+            },
+            "spec": {
+                "tags": [
+                    {
+                        "name": "latest",
+                        "from": {
+                            "kind": "DockerImage",
+                            "name": "la3mmchen/logstash-docker-image"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "DeploymentConfig",
+            "metadata": {
+                "name": "${APPLICATION_NAME}",
+                "labels": {
+                    "app": "${APPLICATION_NAME}",
+                    "type": "application"
+                }
+            },
+            "spec": {
+                "replicas": 1,
+                "selector": {
+                    "app": "${APPLICATION_NAME}",
+                    "deploymentconfig": "${APPLICATION_NAME}"
+                },
+                "template": {
+                    "metadata": {
+                        "labels": {
+                            "app": "${APPLICATION_NAME}",
+                            "deploymentconfig": "${APPLICATION_NAME}",
+                            "type": "application"
+                        }
+                    },
+                    "spec": {
+                        "containers": [
+                            {
+                                "name": "logstash",
+                                "image": "${APPLICATION_NAME}-img:latest",
+                                "imagePullPolicy": "IfNotPresent",
+                                "ports": [
+                                    {
+                                        "containerPort": 8080,
+                                        "protocol": "TCP"
+                                    }
+                                ],
+                                "volumeMounts": [
+                                    {
+                                        "mountPath": "/etc/logstash/",
+                                        "name": "logstash-1"
+                                    }
+                                ]
+                            }
+                        ],
+                        "volumes": [
+                            {
+                                "configMap": {
+                                    "defaultMode": 420,
+                                    "name": "${APPLICATION_NAME}-config"
+                                },
+                                "name": "logstash-1"
+                            }
+                        ]
+                    }
+                },
+                "test": false,
+                "triggers": [
+                    {
+                        "type": "ConfigChange"
+                    },
+                    {
+                        "imageChangeParams": {
+                            "automatic": true,
+                            "containerNames": [
+                                "logstash"
+                            ],
+                            "from": {
+                                "kind": "ImageStreamTag",
+                                "name": "${APPLICATION_NAME}-img:latest"
+                            }
+                        },
+                        "type": "ImageChange"
+                    }
+                ],
+                "strategy": {
+                    "type": "Recreate",
+                    "recreateParams": {
+                      "timeoutSeconds": 600
+                    },
+                    "resources": {
+                    },
+                    "activeDeadlineSeconds": 21600
+                  }
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "name": "${APPLICATION_NAME}",
+                "labels": {
+                    "app": "${APPLICATION_NAME}",
+                    "type": "application"
+                },
+                "annotations":
+                {
+                  "prometheus.io/scheme": "http",
+                  "prometheus.io/scrape": "true",
+                  "prometheus.io/probe": "false",
+                  "prometheus.io/port": "8082",
+                  "prometheus.io/path": "/_prometheus/metrics"
+                }
+            },
+            "spec": {
+                "ports": [
+                  {
+                      "name": "8080-tcp",
+                      "port": 8080,
+                      "protocol": "TCP",
+                      "targetPort": 8080
+                  }
+                ],
+                "selector": {
+                    "deploymentconfig": "${APPLICATION_NAME}"
+                },
+                "type": "ClusterIP"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Route",
+            "metadata": {
+                "name": "${APPLICATION_NAME}",
+                "labels": {
+                    "app": "${APPLICATION_NAME}",
+                    "type": "application"
+                }
+            },
+            "spec": {
+                "host": "",
+                "port": {
+                    "targetPort": "8080-tcp"
+                },
+                "to": {
+                    "kind": "Service",
+                    "name": "${APPLICATION_NAME}",
+                    "weight": 100
+                }
+            }
+        }
+    ]
+}

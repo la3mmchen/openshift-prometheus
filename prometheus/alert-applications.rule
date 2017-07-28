@@ -1,0 +1,47 @@
+ALERT DiskWillFillIn4Hours
+  IF predict_linear(node_filesystem_free{type='application'}[1h], 4*3600) < 0
+  FOR 5m
+  LABELS {
+    severity="critical"
+  }
+  ANNOTATIONS {
+    summary = "Instance {{ $labels.instance }} / {{ $labels.app }} will have a full disk in 4 h",
+    description = "{{ $labels.instance }} / {{ $labels.app }} will have a full disk in 4 h.",
+  }
+
+ALERT ApplicationInstanceDown
+  IF up{type="application",job="kubernetes-service-endpoints"} == 0
+  FOR 5m
+  LABELS { severity = "critical" }
+  ANNOTATIONS {
+    summary = "Instance {{ $labels.instance }} / {{ $labels.app }} down",
+    description = "{{ $labels.instance }} / {{ $labels.app }} has been down for more than 5 minutes.",
+  }
+
+ALERT MonitoringInstanceDown
+  IF up{type="monitoring",job="kubernetes-service-endpoints"} == 0
+  FOR 1m
+  LABELS { severity = "critical" }
+  ANNOTATIONS {
+    summary = "Instance {{ $labels.instance }} / {{ $labels.app }} down",
+    description = "{{ $labels.instance }} / {{ $labels.app }} has been down for more than 5 minutes.",
+  }
+
+
+ALERT HttpProbeFailed
+  IF probe_http_status_code{type="application"} != 200
+  FOR 5m
+  LABELS { severity = "warning" }
+  ANNOTATIONS {
+    summary = "HttpProbe for Instance {{ $labels.instance }} / {{ $labels.app }} not responding 200",
+    description = "{{ $labels.instance }} / {{ $labels.app }} has been HTTP-Status != 200 for more than 5 minutes.",
+  }
+
+ALERT ContainerRestarting
+  IF kube_pod_container_status_restarts >= 1
+  FOR 5m
+  LABELS { severity = "critical" }
+  ANNOTATIONS {
+    summary = "lala",
+    description = "lalalalala",
+  }
